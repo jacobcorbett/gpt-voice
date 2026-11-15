@@ -1,7 +1,7 @@
 import AppKit
 import Carbon.HIToolbox
 
-/// A focusable control that records one modifier+key shortcut.
+/// A focusable control that records a modifier+key shortcut or an Fn-only tap.
 /// Click it, or focus it and press Space or Return, to start. Esc cancels.
 final class ShortcutRecorderNSView: NSView {
     var onBegin: () -> Void = {}
@@ -25,6 +25,7 @@ final class ShortcutRecorderNSView: NSView {
         }
     }
     private var observers: [NSObjectProtocol] = []
+    private var functionGesture = FunctionKeyGesture()
     private static let radius: CGFloat = 6
 
     override init(frame frameRect: NSRect) {
@@ -91,6 +92,7 @@ final class ShortcutRecorderNSView: NSView {
     }
 
     override func keyDown(with event: NSEvent) {
+        _ = functionGesture.consume(type: event.type, keyCode: event.keyCode, modifiers: event.modifierFlags)
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         let plain = flags.intersection([.command, .option, .control, .shift]).isEmpty
         guard isRecording else {
@@ -108,8 +110,17 @@ final class ShortcutRecorderNSView: NSView {
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         guard isRecording, window?.firstResponder === self else { return super.performKeyEquivalent(with: event) }
+        _ = functionGesture.consume(type: event.type, keyCode: event.keyCode, modifiers: event.modifierFlags)
         handle(event)
         return true
+    }
+
+    override func flagsChanged(with event: NSEvent) {
+        guard isRecording else { super.flagsChanged(with: event); return }
+        if functionGesture.consume(type: event.type, keyCode: event.keyCode, modifiers: event.modifierFlags),
+           onCapture(.function) {
+            stopRecording()
+        }
     }
 
     override func resignFirstResponder() -> Bool {
@@ -151,12 +162,14 @@ final class ShortcutRecorderNSView: NSView {
     private func startRecording() {
         guard isEnabled, !isRecording else { return }
         isRecording = true
+        functionGesture = FunctionKeyGesture()
         onBegin()
     }
 
     private func stopRecording() {
         guard isRecording else { return }
         isRecording = false
+        functionGesture = FunctionKeyGesture()
         onEnd()
     }
 

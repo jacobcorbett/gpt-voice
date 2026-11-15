@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Checks that the real global shortcut reaches this app. The model's Carbon handler reports receipt.
+/// Checks that the real global shortcut reaches this app. The model's shortcut handler reports receipt.
 /// Nothing here listens for keys, records, transcribes, pastes, or touches the clipboard.
 struct ShortcutTestRow: View {
     @ObservedObject var model: AppModel
@@ -22,7 +22,7 @@ struct ShortcutTestRow: View {
                         .accessibilityLabel("Test shortcut")
                 }
             case .listening:
-                StatusRow(tone: .working, symbol: "", title: "Press \(preferences.hotkey.displayLabel)",
+                StatusRow(tone: .working, symbol: "", title: "\(preferences.shortcutMode == .hold ? "Hold" : "Press") \(preferences.hotkey.displayLabel)",
                           detail: "Microphone off") {
                     Button("Cancel") { model.endShortcutTest() }
                         .buttonStyle(AppButtonStyle(kind: .quiet, small: true))

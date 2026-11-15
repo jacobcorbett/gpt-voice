@@ -5,8 +5,8 @@ struct ClipboardSnapshot {
     let changeCount: Int
     private let items: [[NSPasteboard.PasteboardType: Data]]
 
-    static func capture(_ pasteboard: NSPasteboard) -> ClipboardSnapshot {
-        let items = (pasteboard.pasteboardItems ?? []).map { item in
+    static func capture(_ pasteboard: NSPasteboard, includingContents: Bool = true) -> ClipboardSnapshot {
+        let items = (includingContents ? pasteboard.pasteboardItems ?? [] : []).map { item in
             item.types.reduce(into: [NSPasteboard.PasteboardType: Data]()) { result, type in
                 if let data = item.data(forType: type) { result[type] = data }
             }

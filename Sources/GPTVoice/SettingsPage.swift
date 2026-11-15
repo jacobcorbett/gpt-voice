@@ -35,7 +35,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
     /// A subtitle only where the title alone does not explain the page.
     var intro: String? {
         switch self {
-        case .shortcuts: return "Press it once to start dictation. Press it again to stop."
+        case .shortcuts: return "Choose a shortcut and how it records."
         case .home, .history, .appearance, .preferences, .privacy: return nil
         }
     }

@@ -13,7 +13,7 @@ struct OnboardingWelcomeStep: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 32) {
             OnboardingHeader(title: "Dictate into any app",
-                             summary: "Press your shortcut, speak, and press it again.")
+                             summary: "Use your shortcut to record, then put your words where you type.")
 
             HStack(spacing: 14) {
                 KeycapsView(spec: preferences.hotkey)

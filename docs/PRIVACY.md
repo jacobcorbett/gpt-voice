@@ -24,7 +24,11 @@ Normal Mac backups can include this file. Audio is not kept in history.
 ChatGPT's handling of uploaded audio is subject to your account settings and OpenAI's policies.
 
 Microphone access permits recording after you start dictation.
-Accessibility access permits automatic paste. You can decline it and paste with Command–V instead.
+Accessibility access permits automatic paste and the optional standalone Fn shortcut.
+When Fn is selected, local and global AppKit event monitors observe modifier changes and
+key events to distinguish a tap from Fn combinations. These events are not stored or sent anywhere.
+Other shortcuts use Carbon hotkey registration. You can decline Accessibility, choose a
+modifier+key shortcut, and paste with Command–V instead.
 The app rechecks permissions when you return from System Settings.
 
 The website's interactive preview runs in your browser with fixed sample text.

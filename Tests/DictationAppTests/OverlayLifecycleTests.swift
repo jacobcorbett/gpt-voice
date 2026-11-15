@@ -6,6 +6,34 @@ import XCTest
 
 final class OverlayLifecycleTests: XCTestCase {
     @MainActor
+    func testZeroEntranceShowsThePillAtFullOpacityImmediately() {
+        let fixture = Fixture(entrance: 0)
+        defer { fixture.cleanup() }
+        fixture.controller.update(for: .preparing)
+        XCTAssertTrue(fixture.controller.isVisible)
+        XCTAssertEqual(fixture.controller.opacity, 1, accuracy: 0.001)
+    }
+
+    @MainActor
+    func testMinimalPillResizesLiveAndKeepsSpinnerAndErrorMessages() async throws {
+        let fixture = Fixture(reduceMotion: true)
+        defer { fixture.cleanup() }
+        fixture.controller.update(for: .recording)
+        let full = fixture.controller.targetFrame
+        fixture.model.preferences.pillContents = .minimal
+        try await waitUntil { fixture.controller.targetFrame.width < full.width }
+        let minimal = fixture.controller.targetFrame
+        XCTAssertEqual(minimal.midX, full.midX, accuracy: 0.5)
+        XCTAssertGreaterThanOrEqual(minimal.width, 40)
+        fixture.controller.update(for: .transcribing)
+        XCTAssertEqual(fixture.controller.targetFrame.width, 40, accuracy: 1)
+        XCTAssertTrue(fixture.controller.isVisible)
+        fixture.controller.update(for: .failed(DictationFailure(transcriptionError: DictationError.emptyTranscript)))
+        XCTAssertGreaterThan(fixture.controller.targetFrame.width, 40)
+        XCTAssertEqual(fixture.controller.displayedState, .message(label: "No speech found", kind: .noSpeech))
+    }
+
+    @MainActor
     func testNoSpeechKeepsItsContentDuringFadeThenDisappears() async throws {
         let fixture = Fixture()
         defer { fixture.cleanup() }
@@ -147,7 +175,7 @@ final class OverlayLifecycleTests: XCTestCase {
         let model: AppModel
         let controller: DictationPanelController
 
-        init(resize: TimeInterval = 0.12, reduceMotion: Bool = false) {
+        init(resize: TimeInterval = 0.12, reduceMotion: Bool = false, entrance: TimeInterval = 0.02) {
             _ = NSApplication.shared
             FontRegistration.registerBundledFonts()
             defaults = UserDefaults(suiteName: suite)!
@@ -155,7 +183,7 @@ final class OverlayLifecycleTests: XCTestCase {
             model = AppModel(preferences: AppPreferences(defaults: defaults), pasteboard: clipboard, history: TranscriptionHistory(fileURL: FileManager.default.temporaryDirectory.appendingPathComponent("gpt-voice-test-\(UUID().uuidString)/history.json"))) { _ in
                 "Overlay test text"
             }
-            let timing = OverlayTiming(resize: resize, entrance: 0.02, exit: 0.2, reducedFade: 0.1,
+            let timing = OverlayTiming(resize: resize, entrance: entrance, exit: 0.2, reducedFade: 0.1,
                                        success: 0.08, noSpeech: 0.08, warning: 0.08, pasteHint: 0.08, help: 0.08)
             controller = DictationPanelController(model: model, timing: timing, reduceMotion: { reduceMotion })
         }

@@ -21,7 +21,28 @@ If macOS did not yet list the app, select **Allow** inside GPT Voice to request 
 
 ## Accessibility and paste
 
-Accessibility is optional. Choose manual paste to copy text and paste it with Command–V.
+Accessibility is optional with ordinary shortcuts. Choose manual paste to copy text and paste it with Command–V.
+The standalone **Fn** shortcut requires Accessibility access, even with manual paste.
+Set **System Settings → Keyboard → Press 🌐 key to → Do Nothing**, and keep Globe mapped
+to Globe under **Keyboard Shortcuts → Modifier Keys**. Select **Toggle** or **Hold** in GPT Voice's
+Shortcut settings. Fn combinations such as Fn+Delete cancel a held recording. Disable another dictation app's
+Fn shortcut if both apps respond.
+
+In **Shortcut → Hands-free recording**, enable **Double-tap Fn to toggle** with
+Fn in Hold mode. Tap Fn twice quickly to start a continuous recording, then
+twice again to stop. Holding Fn still records only until you release it. Taps
+must be shorter than the short-tap threshold and close together; typing between taps
+cancels the gesture. Disable macOS's double-Fn Dictation shortcut if it also responds.
+You can also enable and record a separate toggle shortcut on the same page.
+
+Under **Appearance → Pill contents**, use **Minimal** for waveform-only recording
+and a loading circle, or choose individual contents. At least one recording
+indicator always remains visible. Errors and copy instructions remain readable.
+
+## Hidden menu-bar icon
+
+Reopen GPT Voice from Applications to bring up Settings. Under Preferences, turn
+**Show menu bar icon** back on. Hiding the icon does not quit the app or disable its shortcut.
 For automatic paste, enable GPT Voice in **System Settings → Privacy & Security → Accessibility**.
 Return to the app, or select its refresh button.
 The status check also tries a read-only Accessibility request if macOS has not refreshed its trust flag.

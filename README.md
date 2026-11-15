@@ -48,6 +48,12 @@ If macOS shows a verification warning, ignore it and open **System Settings → 
 ## A small tool that stays out of the way
 
 - A configurable global shortcut. The default is **Control–Option–Space**.
+- An **Fn/Globe** preset, or tap Fn in the shortcut recorder. This requires Accessibility access. Set macOS **Keyboard → Press 🌐 key to → Do Nothing**, and keep Globe mapped to Globe under Modifier Keys.
+- **Keep pasted text on clipboard** under Preferences leaves each automatically pasted transcript ready for another ⌘V. Turn it off to restore the previous clipboard after paste.
+- **Toggle** or **Hold** mode under Shortcut. Hold records until you release the shortcut. Fn shows the pill and starts capture immediately on key-down. Quick taps and Fn key combinations discard their brief recording without uploading it.
+- Optional **Double-tap Fn to toggle** keeps Hold mode available: Fn twice starts hands-free recording, and Fn twice again finishes it. A separate configurable toggle shortcut can be enabled alongside the main shortcut.
+- An optional menu-bar icon under Preferences. When hidden, reopen GPT Voice from Applications to access Settings.
+- Customizable pill contents under Appearance: waveform, timer, recording dot, cancel/stop buttons and status labels. The Minimal preset shows the waveform while recording and a loading circle while working. Important error and copy instructions remain visible.
 - A compact recording pill with input level, elapsed time, cancel and stop.
 - Automatic paste, or **Command–V** for manual paste.
 - Onboarding with permission recovery and an in-app practice step.

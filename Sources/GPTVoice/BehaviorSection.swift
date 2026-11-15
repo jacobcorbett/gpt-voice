@@ -16,6 +16,12 @@ struct BehaviorSection: View {
 
     var body: some View {
         SettingsGroup {
+            MicrophonePicker(model: model)
+            SettingsRow(title: "Show menu bar icon",
+                        detail: "When hidden, reopen GPT Voice from Applications to access Settings.") {
+                AppToggle(label: "Show menu bar icon", isOn: $preferences.showMenuBarIcon)
+                    .disabled(!model.canChangeSettings)
+            }
             SettingsRow(title: "Paste automatically",
                         detail: model.accessibilityTrusted ? nil : "Needs Accessibility. Until then, text is copied.") {
                 AppToggle(label: "Paste automatically",
@@ -25,6 +31,11 @@ struct BehaviorSection: View {
             SettingsRow(title: "Sound cues") {
                 AppToggle(label: "Sound cues",
                           isOn: Binding(get: { preferences.soundCues }, set: { model.setSoundCues($0) }))
+                    .disabled(!model.canChangeSettings)
+            }
+            SettingsRow(title: "Keep pasted text on clipboard",
+                        detail: "Leave the transcript ready for ⌘V after automatic paste.") {
+                AppToggle(label: "Keep pasted text on clipboard", isOn: $preferences.keepTranscriptOnClipboard)
                     .disabled(!model.canChangeSettings)
             }
             SettingsRow(title: "Open at login", showsDivider: showsLoginIssue) {

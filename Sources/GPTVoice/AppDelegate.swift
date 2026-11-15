@@ -48,6 +48,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             windows.showOnboarding()
         case .normal:
             if !model.preferences.onboardingCompleted { windows.showOnboarding() }
+            else if !model.preferences.showMenuBarIcon { windows.showSettings() }
         }
     }
 

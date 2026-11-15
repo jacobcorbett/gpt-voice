@@ -22,6 +22,8 @@ final class TranscriptionHistory: ObservableObject {
     }
 
     func append(_ entry: HistoryEntry) async { await enqueue(.append(entry)).value }
+    /// Enqueues persistence immediately without holding visual feedback behind disk IO.
+    func record(_ entry: HistoryEntry) { enqueue(.append(entry)) }
     func remove(id: UUID) async { await enqueue(.remove(id)).value }
     func clear() async { await enqueue(.clear).value }
     func retrySave() async { await enqueue(.retry).value }

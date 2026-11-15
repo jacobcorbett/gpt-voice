@@ -16,7 +16,9 @@ struct HomePage: View {
         let ready = model.missingRequirements.isEmpty
         VStack(alignment: .leading, spacing: 24) {
             SettingsGroup(footnote: ready
-                ? "Press \(preferences.hotkey.displayLabel) in any app to start. Press it again to stop."
+                ? (preferences.shortcutMode == .hold
+                    ? "Hold \(preferences.hotkey.displayLabel) in any app to record. Release to transcribe."
+                    : "Press \(preferences.hotkey.displayLabel) in any app to start. Press it again to stop.")
                 : "Dictation works once the items marked here are fixed.") {
                 ConnectionPanel(model: model, prominentSignIn: false)
                     .disabled(!model.canChangeSettings)
@@ -35,7 +37,7 @@ struct HomePage: View {
             }
 
             InfoDisclosure(label: "How dictation works",
-                           text: "Click where you want the text. Press your shortcut and speak. Press it again to finish. With automatic paste, the text goes where you clicked. Otherwise it is copied and you press ⌘V.")
+                           text: "Click where you want the text. \(preferences.shortcutMode.detail) With automatic paste, the text goes where you clicked. Otherwise it is copied and you press ⌘V.")
         }
     }
 }

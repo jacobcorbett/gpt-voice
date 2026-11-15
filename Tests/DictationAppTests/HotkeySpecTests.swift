@@ -4,6 +4,19 @@ import XCTest
 @testable import GPTVoice
 
 final class HotkeySpecTests: XCTestCase {
+    func testStandaloneFnIsValidAndSurvivesPreferencesRoundTrip() throws {
+        XCTAssertNil(HotkeySpec.function.problem)
+        XCTAssertEqual(HotkeySpec.function.displayLabel, "Fn")
+        XCTAssertEqual(HotkeySpec.function.accessibilityLabel, "Fn")
+        XCTAssertNil(HotkeySpec.function.menuKeyEquivalent)
+        let data = try JSONEncoder().encode(HotkeySpec.function)
+        XCTAssertEqual(try JSONDecoder().decode(HotkeySpec.self, from: data), .function)
+    }
+
+    func testFnWithOtherModifiersIsStillRejected() {
+        XCTAssertEqual(HotkeySpec(keyCode: UInt32(kVK_Function), modifiers: UInt32(cmdKey)).problem, .modifierOnly)
+    }
+
     func testCommandSpaceCanBeChosenWhenTheSystemShortcutIsDisabled() {
         XCTAssertNil(HotkeySpec.commandSpace.problem)
         XCTAssertEqual(HotkeySpec.commandSpace.displayLabel, "⌘Space")

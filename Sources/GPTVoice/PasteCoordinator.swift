@@ -3,6 +3,11 @@ import ApplicationServices
 import Carbon.HIToolbox
 import DictationCore
 
+struct PastePlatform {
+    var isAutomaticPasteAvailable: (() -> Bool)? = nil
+    var postPaste: (() -> Bool)? = nil
+}
+
 /// Serial owner of the clipboard lease and paste delivery.
 /// Call `beginSession()` when recording starts and `deliver(text:automaticPaste:)` when the transcript arrives.
 @MainActor
@@ -11,12 +16,15 @@ final class PasteCoordinator {
     static let restoreDelay: UInt64 = 750_000_000
 
     private let pasteboard: NSPasteboard
+    private let platform: PastePlatform?
+    private var keepTranscriptOnClipboard = false
     private var target: PasteTarget?
     private var snapshot: ClipboardSnapshot?
     private var delivery: Task<PasteOutcome, Never>?
 
-    init(pasteboard: NSPasteboard = .general) {
+    init(pasteboard: NSPasteboard = .general, platform: PastePlatform? = nil) {
         self.pasteboard = pasteboard
+        self.platform = platform
     }
 
     /// True while a paste or a clipboard restore is pending. Block new recordings while true.
@@ -28,9 +36,10 @@ final class PasteCoordinator {
     }
 
     /// Captures the paste target and the clipboard. Call at recording start.
-    func beginSession() {
+    func beginSession(keepTranscriptOnClipboard: Bool = false) {
+        self.keepTranscriptOnClipboard = keepTranscriptOnClipboard
         target = PasteTarget.captureFrontmost()
-        snapshot = ClipboardSnapshot.capture(pasteboard)
+        snapshot = ClipboardSnapshot.capture(pasteboard, includingContents: !keepTranscriptOnClipboard)
     }
 
     /// Drops the captured target and clipboard, for example after Cancel.
@@ -45,10 +54,11 @@ final class PasteCoordinator {
     }
 
     /// Delivers a transcript once. Never replaces a clipboard that changed since `beginSession()`.
-    func deliver(text: String, automaticPaste: Bool) async -> PasteOutcome {
+    func deliver(text: String, automaticPaste: Bool,
+                 onPasted: ((PasteOutcome) -> Void)? = nil) async -> PasteOutcome {
         await waitForLease()
         let task = Task { () -> PasteOutcome in
-            let outcome = await self.performDelivery(text: text, automaticPaste: automaticPaste)
+            let outcome = await self.performDelivery(text: text, automaticPaste: automaticPaste, onPasted: onPasted)
             self.endSession()
             self.delivery = nil
             return outcome
@@ -57,13 +67,16 @@ final class PasteCoordinator {
         return await task.value
     }
 
-    private func performDelivery(text: String, automaticPaste: Bool) async -> PasteOutcome {
+    private func performDelivery(text: String, automaticPaste: Bool,
+                                 onPasted: ((PasteOutcome) -> Void)?) async -> PasteOutcome {
         if let snapshot, pasteboard.changeCount != snapshot.changeCount {
             return .preservedNewerClipboard
         }
         let reason: PasteOutcome.ManualReason?
         if !automaticPaste {
             reason = .automaticPasteOff
+        } else if let available = platform?.isAutomaticPasteAvailable {
+            reason = available() ? nil : .noTarget
         } else if !AccessibilityPermission.check() {
             reason = .accessibilityMissing
         } else if target == nil || snapshot == nil {
@@ -79,15 +92,18 @@ final class PasteCoordinator {
         }
 
         let ownedChange = write(TranscriptText.forAutomaticPaste(text))
-        guard postCommandV() else {
+        guard platform?.postPaste?() ?? postCommandV() else {
             // Keep the transcript on the clipboard for manual recovery.
             return .copied(.injectionFailed)
         }
+        let outcome = PasteOutcome.pasted(appName: target?.appName)
+        onPasted?(outcome)
+        if keepTranscriptOnClipboard { return outcome }
         try? await Task.sleep(nanoseconds: Self.restoreDelay)
         if pasteboard.changeCount == ownedChange, let snapshot {
             snapshot.restore(to: pasteboard)
         }
-        return .pasted(appName: target?.appName)
+        return outcome
     }
 
     @discardableResult

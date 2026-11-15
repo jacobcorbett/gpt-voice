@@ -1,8 +1,9 @@
 import Carbon.HIToolbox
 import Foundation
+import AppKit
 
-/// Registers one global hotkey with Carbon `RegisterEventHotKey`.
-/// No event tap is used, so Input Monitoring permission is not needed.
+/// Uses Carbon for key combinations and AppKit event monitors for standalone Fn.
+/// Fn monitoring requires Accessibility permission; ordinary shortcuts do not.
 @MainActor
 final class GlobalShortcut {
     enum RegistrationError: LocalizedError, Equatable {
@@ -10,6 +11,8 @@ final class GlobalShortcut {
         case conflict
         case systemShortcut(HotkeySpec)
         case system(OSStatus)
+        case functionKeyAccess
+        case functionKeyMonitor
 
         var errorDescription: String? {
             switch self {
@@ -20,6 +23,10 @@ final class GlobalShortcut {
                     ? "Spotlight uses Command–Space. Turn off or change that shortcut in System Settings → Keyboard → Keyboard Shortcuts → Spotlight, then try again."
                     : "macOS uses this shortcut. Change it in System Settings → Keyboard → Keyboard Shortcuts, then try again."
             case .system(let status): return "macOS could not register this shortcut (error \(status))."
+            case .functionKeyAccess:
+                return "Allow GPT Voice in System Settings > Privacy & Security > Accessibility to use Fn, then try again."
+            case .functionKeyMonitor:
+                return "macOS could not listen for Fn. Choose another shortcut or restart GPT Voice."
             }
         }
     }
@@ -28,25 +35,51 @@ final class GlobalShortcut {
 
     private(set) var current: HotkeySpec?
     private var currentRef: EventHotKeyRef?
-    private var currentID: UInt32 = 0
-    private var nextID: UInt32 = 1
+    private(set) var currentID: UInt32 = 0
+    private static var nextID: UInt32 = 1
     private var handlerRef: EventHandlerRef?
+    private var functionGlobalMonitor: Any?
+    private var functionLocalMonitor: Any?
+    private var functionGesture = FunctionKeyGesture()
+    private var functionActivation = FunctionKeyActivation()
+    private var functionStartedHold = false
+    var mode: ShortcutMode = .toggle {
+        didSet { resetFunctionActivation() }
+    }
+    var doubleTapToToggle = false {
+        didSet { resetFunctionActivation() }
+    }
     private let onPress: @MainActor () -> Void
+    private let onRelease: @MainActor () -> Void
+    private let onCancel: @MainActor () -> Void
+    private let onToggle: @MainActor () -> Void
 
-    init(onPress: @escaping @MainActor () -> Void) {
+    init(onPress: @escaping @MainActor () -> Void,
+         onRelease: @escaping @MainActor () -> Void = {},
+         onCancel: @escaping @MainActor () -> Void = {},
+         onToggle: (@MainActor () -> Void)? = nil) {
         self.onPress = onPress
+        self.onRelease = onRelease
+        self.onCancel = onCancel
+        self.onToggle = onToggle ?? onPress
         installHandler()
     }
 
     deinit {
         if let currentRef { UnregisterEventHotKey(currentRef) }
         if let handlerRef { RemoveEventHandler(handlerRef) }
+        if let functionGlobalMonitor { NSEvent.removeMonitor(functionGlobalMonitor) }
+        if let functionLocalMonitor { NSEvent.removeMonitor(functionLocalMonitor) }
     }
 
     /// Registers `spec` as the active shortcut. The previous shortcut stays
     /// active when the new registration fails.
     func replace(with spec: HotkeySpec) throws {
         if let problem = spec.problem { throw RegistrationError.invalid(problem) }
+        if spec.isFunctionOnly {
+            try registerFunctionKey()
+            return
+        }
         if Self.isSystemShortcutEnabled(spec) { throw RegistrationError.systemShortcut(spec) }
         if spec == current, currentRef != nil { return }
 
@@ -60,8 +93,8 @@ final class GlobalShortcut {
             currentRef = nil
         }
 
-        let id = nextID
-        nextID &+= 1
+        let id = Self.nextID
+        Self.nextID &+= 1
         var ref: EventHotKeyRef?
         let status = RegisterEventHotKey(spec.keyCode, spec.modifiers,
                                          EventHotKeyID(signature: Self.signature, id: id),
@@ -73,6 +106,7 @@ final class GlobalShortcut {
         if !sameCombination, let previousRef { UnregisterEventHotKey(previousRef) }
         currentRef = ref
         currentID = id
+        removeFunctionMonitors()
         current = spec
     }
 
@@ -80,7 +114,90 @@ final class GlobalShortcut {
     func unregister() {
         if let currentRef { UnregisterEventHotKey(currentRef) }
         currentRef = nil
+        removeFunctionMonitors()
         current = nil
+    }
+
+    private func registerFunctionKey() throws {
+        guard AccessibilityPermission.check() else { throw RegistrationError.functionKeyAccess }
+        if current == .function, functionGlobalMonitor != nil, functionLocalMonitor != nil { return }
+        let mask: NSEvent.EventTypeMask = [.flagsChanged, .keyDown, .systemDefined]
+        guard let global = NSEvent.addGlobalMonitorForEvents(matching: mask, handler: { [weak self] event in
+            self?.handleFunctionEvent(event)
+        }) else { throw RegistrationError.functionKeyMonitor }
+        guard let local = NSEvent.addLocalMonitorForEvents(matching: mask, handler: { [weak self] event in
+            self?.handleFunctionEvent(event)
+            return event
+        }) else {
+            NSEvent.removeMonitor(global)
+            throw RegistrationError.functionKeyMonitor
+        }
+        // Keep the previous shortcut active until both monitors are installed.
+        if let currentRef { UnregisterEventHotKey(currentRef) }
+        currentRef = nil
+        removeFunctionMonitors()
+        functionGlobalMonitor = global
+        functionLocalMonitor = local
+        current = .function
+    }
+
+    private func handleFunctionEvent(_ event: NSEvent) {
+        guard current == .function else { return }
+        // systemDefined events (including media keys) do not have an AppKit keyCode.
+        let code: UInt16 = event.type == .systemDefined ? 0 : event.keyCode
+        handleFunctionGesture(functionGesture.update(type: event.type, keyCode: code, modifiers: event.modifierFlags),
+                              at: event.timestamp, interruptsDoubleTap: event.type != .flagsChanged || Int(code) != kVK_Function)
+    }
+
+    func handleFunctionGesture(_ gesture: FunctionKeyGesture.Action?, at timestamp: TimeInterval,
+                               interruptsDoubleTap: Bool = false) {
+        switch gesture {
+        case .pressed:
+            functionActivation.press(at: timestamp)
+            if mode == .hold {
+                // Show the pill and start capture on key-down. A quick tap or
+                // chord cancels its short recording without sending any audio.
+                functionStartedHold = true
+                onPress()
+            }
+        case .released:
+            let action = functionActivation.release(at: timestamp, mode: mode,
+                                                     doubleTap: doubleTapToToggle)
+            if functionStartedHold, action == nil { onCancel() }
+            functionStartedHold = false
+            deliverFunctionAction(action)
+        case .cancelled:
+            resetFunctionActivation()
+        case nil:
+            // Typing between two Fn taps breaks the double-tap gesture.
+            if interruptsDoubleTap { resetFunctionActivation() }
+        }
+    }
+
+    private func deliverFunctionAction(_ action: FunctionKeyActivation.Action?) {
+        switch action {
+        case .beginHold: onPress()
+        case .endHold: onRelease()
+        case .cancelHold: onCancel()
+        case .toggle: onToggle()
+        case nil: break
+        }
+    }
+
+    private func resetFunctionActivation() {
+        let action = functionActivation.cancel()
+        if functionStartedHold { onCancel() }
+        else { deliverFunctionAction(action) }
+        functionStartedHold = false
+    }
+
+    private func removeFunctionMonitors() {
+        resetFunctionActivation()
+        if let functionGlobalMonitor { NSEvent.removeMonitor(functionGlobalMonitor) }
+        if let functionLocalMonitor { NSEvent.removeMonitor(functionLocalMonitor) }
+        functionGlobalMonitor = nil
+        functionLocalMonitor = nil
+        functionGesture = FunctionKeyGesture()
     }
 
     private func restore(_ spec: HotkeySpec) {
@@ -91,9 +208,9 @@ final class GlobalShortcut {
         if status == noErr { currentRef = ref } else { current = nil }
     }
 
-    fileprivate func handlePress(id: UInt32) {
+    func handlePress(id: UInt32, released: Bool = false) {
         guard id == currentID, currentRef != nil else { return }
-        onPress()
+        if released { onRelease() } else { onPress() }
     }
 
     static func isSystemShortcutEnabled(_ spec: HotkeySpec) -> Bool {
@@ -109,7 +226,10 @@ final class GlobalShortcut {
     }
 
     private func installHandler() {
-        var eventType = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
+        var eventTypes = [
+            EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed)),
+            EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyReleased))
+        ]
         let context = Unmanaged.passUnretained(self).toOpaque()
         InstallEventHandler(GetApplicationEventTarget(), { _, event, userData in
             guard let event, let userData else { return OSStatus(eventNotHandledErr) }
@@ -121,9 +241,13 @@ final class GlobalShortcut {
                 return OSStatus(eventNotHandledErr)
             }
             let shortcut = Unmanaged<GlobalShortcut>.fromOpaque(userData).takeUnretainedValue()
+            guard hotKeyID.id == shortcut.currentID, shortcut.currentRef != nil else {
+                return OSStatus(eventNotHandledErr)
+            }
             let id = hotKeyID.id
-            DispatchQueue.main.async { shortcut.handlePress(id: id) }
+            let released = GetEventKind(event) == UInt32(kEventHotKeyReleased)
+            DispatchQueue.main.async { shortcut.handlePress(id: id, released: released) }
             return noErr
-        }, 1, &eventType, context, &handlerRef)
+        }, eventTypes.count, &eventTypes, context, &handlerRef)
     }
 }

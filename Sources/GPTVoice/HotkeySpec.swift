@@ -1,7 +1,7 @@
 import AppKit
 import Carbon.HIToolbox
 
-/// A global keyboard shortcut: one virtual key code plus Carbon modifier flags.
+/// A global keyboard shortcut: a modifier+key combination, or a standalone Fn tap.
 struct HotkeySpec: Codable, Equatable, Hashable {
     enum Problem: Equatable {
         case needsModifier
@@ -22,6 +22,9 @@ struct HotkeySpec: Codable, Equatable, Hashable {
 
     static let `default` = HotkeySpec(keyCode: UInt32(kVK_Space), modifiers: UInt32(controlKey | optionKey))
     static let commandSpace = HotkeySpec(keyCode: UInt32(kVK_Space), modifiers: UInt32(cmdKey))
+    static let function = HotkeySpec(keyCode: UInt32(kVK_Function), modifiers: 0)
+
+    var isFunctionOnly: Bool { self == .function }
 
     init(keyCode: UInt32, modifiers: UInt32) {
         self.keyCode = keyCode
@@ -70,6 +73,7 @@ struct HotkeySpec: Codable, Equatable, Hashable {
 
     /// The first reason this shortcut cannot be used, or nil when it is acceptable.
     var problem: Problem? {
+        if isFunctionOnly { return nil }
         if Self.modifierKeyCodes.contains(keyCode) { return .modifierOnly }
         if modifiers & Self.primaryModifiers == 0 { return .needsModifier }
         if Self.reservedShortcuts.contains(self) { return .reserved }
@@ -126,7 +130,7 @@ struct HotkeySpec: Codable, Equatable, Hashable {
 
     private static let keyNames: [Int: String] = [
         kVK_Space: "Space", kVK_Return: "Return", kVK_Tab: "Tab", kVK_Delete: "Delete",
-        kVK_ForwardDelete: "Forward Delete", kVK_Escape: "Esc",
+        kVK_ForwardDelete: "Forward Delete", kVK_Escape: "Esc", kVK_Function: "Fn",
         kVK_LeftArrow: "←", kVK_RightArrow: "→", kVK_UpArrow: "↑", kVK_DownArrow: "↓",
         kVK_Home: "Home", kVK_End: "End", kVK_PageUp: "Page Up", kVK_PageDown: "Page Down",
         kVK_F1: "F1", kVK_F2: "F2", kVK_F3: "F3", kVK_F4: "F4", kVK_F5: "F5", kVK_F6: "F6",
